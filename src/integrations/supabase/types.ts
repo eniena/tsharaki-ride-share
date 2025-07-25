@@ -41,6 +41,51 @@ export type Database = {
         }
         Relationships: []
       }
+      bookings: {
+        Row: {
+          created_at: string
+          id: string
+          passenger_id: string
+          seats_booked: number
+          status: Database["public"]["Enums"]["booking_status"]
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          passenger_id: string
+          seats_booked?: number
+          status?: Database["public"]["Enums"]["booking_status"]
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          passenger_id?: string
+          seats_booked?: number
+          status?: Database["public"]["Enums"]["booking_status"]
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookings_passenger_id_fkey"
+            columns: ["passenger_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_feedback: {
         Row: {
           call_id: string
@@ -175,6 +220,113 @@ export type Database = {
         }
         Relationships: []
       }
+      trips: {
+        Row: {
+          available_seats: number
+          car_model: string | null
+          car_plate: string | null
+          created_at: string
+          departure_time: string
+          driver_id: string
+          from_location: string
+          gender_preference: Database["public"]["Enums"]["gender_preference"]
+          id: string
+          notes: string | null
+          price_per_seat: number
+          to_location: string
+          total_seats: number
+          updated_at: string
+        }
+        Insert: {
+          available_seats: number
+          car_model?: string | null
+          car_plate?: string | null
+          created_at?: string
+          departure_time: string
+          driver_id: string
+          from_location: string
+          gender_preference?: Database["public"]["Enums"]["gender_preference"]
+          id?: string
+          notes?: string | null
+          price_per_seat: number
+          to_location: string
+          total_seats: number
+          updated_at?: string
+        }
+        Update: {
+          available_seats?: number
+          car_model?: string | null
+          car_plate?: string | null
+          created_at?: string
+          departure_time?: string
+          driver_id?: string
+          from_location?: string
+          gender_preference?: Database["public"]["Enums"]["gender_preference"]
+          id?: string
+          notes?: string | null
+          price_per_seat?: number
+          to_location?: string
+          total_seats?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          cin_verified: boolean
+          created_at: string
+          email: string
+          gender: Database["public"]["Enums"]["gender_type"] | null
+          id: string
+          name: string
+          phone_number: string | null
+          profile_picture: string | null
+          rating: number | null
+          total_ratings: number | null
+          updated_at: string
+          user_id: string
+          user_type: Database["public"]["Enums"]["user_type"]
+        }
+        Insert: {
+          cin_verified?: boolean
+          created_at?: string
+          email: string
+          gender?: Database["public"]["Enums"]["gender_type"] | null
+          id?: string
+          name: string
+          phone_number?: string | null
+          profile_picture?: string | null
+          rating?: number | null
+          total_ratings?: number | null
+          updated_at?: string
+          user_id: string
+          user_type?: Database["public"]["Enums"]["user_type"]
+        }
+        Update: {
+          cin_verified?: boolean
+          created_at?: string
+          email?: string
+          gender?: Database["public"]["Enums"]["gender_type"] | null
+          id?: string
+          name?: string
+          phone_number?: string | null
+          profile_picture?: string | null
+          rating?: number | null
+          total_ratings?: number | null
+          updated_at?: string
+          user_id?: string
+          user_type?: Database["public"]["Enums"]["user_type"]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -198,7 +350,10 @@ export type Database = {
       }
     }
     Enums: {
+      booking_status: "pending" | "confirmed" | "cancelled"
       call_status: "waiting" | "connected" | "ended"
+      gender_preference: "any" | "men" | "women"
+      gender_type: "male" | "female" | "other"
       language:
         | "english"
         | "spanish"
@@ -213,6 +368,7 @@ export type Database = {
         | "russian"
         | "hindi"
       user_status: "offline" | "online" | "in_call"
+      user_type: "driver" | "passenger"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -340,7 +496,10 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      booking_status: ["pending", "confirmed", "cancelled"],
       call_status: ["waiting", "connected", "ended"],
+      gender_preference: ["any", "men", "women"],
+      gender_type: ["male", "female", "other"],
       language: [
         "english",
         "spanish",
@@ -356,6 +515,7 @@ export const Constants = {
         "hindi",
       ],
       user_status: ["offline", "online", "in_call"],
+      user_type: ["driver", "passenger"],
     },
   },
 } as const
