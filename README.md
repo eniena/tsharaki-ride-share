@@ -1,8 +1,18 @@
-# Welcome to your Lovable project
+# 🚗 Tsharaki (تشاركي) - Moroccan Ride Sharing App
 
-## Project info
+A beautiful, mobile-first ride-sharing platform for Morocco with Arabic/French support.
 
-**URL**: https://lovable.dev/projects/b02c2a33-c8d6-4149-be36-001eefc77da3
+## 🌟 Features
+
+- **Cross-platform**: Android, iOS & Web support via Capacitor
+- **Arabic & French**: Full RTL text support with Moroccan aesthetic
+- **Trust & Safety**: ID verification, rating system, emergency button
+- **Modern UI**: Moroccan-inspired design with warm colors and smooth animations
+- **Complete Ride Management**: Post rides, search, book, review system
+
+## 🚀 Project URL
+
+**Live Demo**: https://lovable.dev/projects/b02c2a33-c8d6-4149-be36-001eefc77da3
 
 ## How can I edit this code?
 
