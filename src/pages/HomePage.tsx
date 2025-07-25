@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
-import { SearchFilters } from "@/components/SearchFilters";
+import { SearchFilters, type SearchFilters as SearchFiltersType } from "@/components/SearchFilters";
 import { RideCard } from "@/components/RideCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   MapPin, 
@@ -92,40 +95,147 @@ const TRUST_FEATURES = [
 ];
 
 export default function HomePage() {
-  const [currentUser] = useState({
-    name: "محمد الأمين",
-    avatar: "",
-    userType: "passenger" as const
-  });
-
-  const [rides, setRides] = useState(SAMPLE_RIDES);
+  const { user, currentUserProfile } = useAuth();
+  const [trips, setTrips] = useState([]);
+  const [filteredTrips, setFilteredTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  useEffect(() => {
+    fetchTrips();
+  }, []);
+
+  const fetchTrips = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('trips')
+        .select(`
+          *,
+          users!trips_driver_id_fkey (
+            name,
+            profile_picture,
+            rating,
+            user_type
+          )
+        `)
+        .gte('departure_time', new Date().toISOString())
+        .gt('available_seats', 0)
+        .order('departure_time', { ascending: true });
+
+      if (error) throw error;
+      
+      setTrips(data || []);
+      setFilteredTrips(data || []);
+    } catch (error: any) {
+      console.error('Error fetching trips:', error);
+      toast.error('خطأ في تحميل الرحلات');
+    }
+  };
 
   const handleSearch = async (filters: any) => {
     setIsLoading(true);
-    // Simulate API call
+    
+    let filtered = [...trips];
+
+    // Filter by route (case-insensitive partial match)
+    if (filters.from) {
+      filtered = filtered.filter(trip => 
+        trip.from_location.toLowerCase().includes(filters.from.toLowerCase())
+      );
+    }
+    
+    if (filters.to) {
+      filtered = filtered.filter(trip => 
+        trip.to_location.toLowerCase().includes(filters.to.toLowerCase())
+      );
+    }
+
+    // Filter by date
+    if (filters.date) {
+      const filterDate = filters.date.toISOString().split('T')[0];
+      filtered = filtered.filter(trip => 
+        trip.departure_time.split('T')[0] >= filterDate
+      );
+    }
+
+    // Filter by available seats
+    if (filters.passengers > 1) {
+      filtered = filtered.filter(trip => 
+        trip.available_seats >= filters.passengers
+      );
+    }
+
+    // Filter by max price
+    if (filters.maxPrice) {
+      filtered = filtered.filter(trip => 
+        trip.price_per_seat <= filters.maxPrice
+      );
+    }
+
+    // Filter by gender preference
+    if (filters.genderPreference) {
+      const genderMap: { [key: string]: string } = {
+        'men': 'men',
+        'women': 'women'
+      };
+      
+      filtered = filtered.filter(trip => 
+        trip.gender_preference === 'any' || 
+        trip.gender_preference === genderMap[filters.genderPreference || '']
+      );
+    }
+
     setTimeout(() => {
-      toast.success(`تم العثور على ${rides.length} رحلة من ${filters.from} إلى ${filters.to}`);
+      setFilteredTrips(filtered);
+      toast.success(`تم العثور على ${filtered.length} رحلة`);
       setIsLoading(false);
-    }, 1000);
+    }, 500);
   };
 
-  const handleBookRide = (rideId: string) => {
-    const ride = rides.find(r => r.id === rideId);
-    if (ride) {
-      toast.success(`تم حجز مقعد في رحلة ${ride.driver.name} بنجاح!`);
-      // Update available seats
-      setRides(prev => prev.map(r => 
-        r.id === rideId 
-          ? { ...r, availableSeats: r.availableSeats - 1 }
-          : r
-      ));
+  const handleBookRide = async (tripId: string) => {
+    if (!user) {
+      setShowAuthModal(true);
+      toast.error('يجب تسجيل الدخول أولاً للحجز');
+      return;
+    }
+
+    if (!currentUserProfile) {
+      toast.error('يرجى إكمال ملفك الشخصي أولاً');
+      return;
+    }
+
+    const trip = filteredTrips.find((t: any) => t.id === tripId);
+    if (!trip || trip.available_seats <= 0) {
+      toast.error('عذراً، لا توجد مقاعد متاحة');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .insert({
+          trip_id: tripId,
+          passenger_id: currentUserProfile.id,
+          seats_booked: 1,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast.success('تم إرسال طلب الحجز بنجاح! سيتم إشعارك عند الموافقة');
+      fetchTrips(); // Refresh trips to update available seats
+    } catch (error: any) {
+      if (error.code === '23505') {
+        toast.error('لديك حجز مسبق لهذه الرحلة');
+      } else {
+        toast.error('خطأ في الحجز: ' + error.message);
+      }
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-sunset">
-      <Navigation currentUser={currentUser} />
+      <Navigation />
       
       {/* Hero Section */}
       <section className="relative py-16 px-4 overflow-hidden">
@@ -142,21 +252,36 @@ export default function HomePage() {
             ابحث عن رحلات مشتركة آمنة ومريحة في جميع أنحاء المغرب
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="hero" size="xl">
+            <Button 
+              variant="hero" 
+              size="xl"
+              onClick={() => document.getElementById('search-section')?.scrollIntoView({ behavior: 'smooth' })}
+            >
               <Users className="w-5 h-5 mr-2" />
               ابحث عن رحلة
             </Button>
-            <Button variant="outline" size="xl" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
-              <MapPin className="w-5 h-5 mr-2" />
-              أضف رحلتك
-            </Button>
+            {user ? (
+              <Button variant="outline" size="xl" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+                <MapPin className="w-5 h-5 mr-2" />
+                أضف رحلتك
+              </Button>
+            ) : (
+              <AuthModal
+                trigger={
+                  <Button variant="outline" size="xl" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+                    <MapPin className="w-5 h-5 mr-2" />
+                    أضف رحلتك
+                  </Button>
+                }
+              />
+            )}
           </div>
         </div>
       </section>
 
       <div className="container mx-auto px-4 py-12">
         {/* Search Section */}
-        <div className="mb-12">
+        <div id="search-section" className="mb-12">
           <SearchFilters onSearch={handleSearch} />
         </div>
 
@@ -165,7 +290,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-bold text-foreground">الرحلات المتاحة</h2>
             <Badge variant="secondary" className="text-lg px-4 py-2">
-              {rides.length} رحلة
+              {filteredTrips.length} رحلة
             </Badge>
           </div>
           
@@ -174,12 +299,32 @@ export default function HomePage() {
               <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-muted-foreground">جاري البحث عن الرحلات...</p>
             </div>
+          ) : filteredTrips.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg">لا توجد رحلات متاحة حالياً</p>
+              <p className="text-sm text-muted-foreground mt-2">جرب تغيير معايير البحث</p>
+            </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {rides.map(ride => (
+              {filteredTrips.map((trip: any) => (
                 <RideCard 
-                  key={ride.id} 
-                  ride={ride} 
+                  key={trip.id} 
+                  ride={{
+                    id: trip.id,
+                    driver: {
+                      name: trip.users?.name || 'سائق',
+                      rating: trip.users?.rating || 0,
+                      avatar: trip.users?.profile_picture || '',
+                      carModel: trip.car_model || ''
+                    },
+                    from: trip.from_location,
+                    to: trip.to_location,
+                    departureTime: new Date(trip.departure_time).toLocaleString('ar-MA'),
+                    price: trip.price_per_seat,
+                    availableSeats: trip.available_seats,
+                    totalSeats: trip.total_seats,
+                    preferences: trip.notes ? [trip.notes] : []
+                  }} 
                   onBook={handleBookRide}
                 />
               ))}
@@ -228,18 +373,41 @@ export default function HomePage() {
                 سافر بأمان وراحة، واوفر المال، والتق بأشخاص جدد
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button variant="outline" size="lg" className="bg-white text-primary hover:bg-white/90">
-                  إنشاء حساب جديد
-                </Button>
-                <Button variant="hero" size="lg" className="bg-white/20 hover:bg-white/30">
-                  <Clock className="w-5 h-5 mr-2" />
-                  ابدأ رحلتك الآن
-                </Button>
+                {user ? (
+                  <Button variant="hero" size="lg" className="bg-white/20 hover:bg-white/30">
+                    <Clock className="w-5 h-5 mr-2" />
+                    ابدأ رحلتك الآن
+                  </Button>
+                ) : (
+                  <>
+                    <AuthModal
+                      trigger={
+                        <Button variant="outline" size="lg" className="bg-white text-primary hover:bg-white/90">
+                          إنشاء حساب جديد
+                        </Button>
+                      }
+                    />
+                    <AuthModal
+                      trigger={
+                        <Button variant="hero" size="lg" className="bg-white/20 hover:bg-white/30">
+                          <Clock className="w-5 h-5 mr-2" />
+                          ابدأ رحلتك الآن
+                        </Button>
+                      }
+                    />
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
         </section>
       </div>
+      
+      {/* Auth Modal for non-authenticated users */}
+      <AuthModal 
+        open={showAuthModal} 
+        onOpenChange={setShowAuthModal} 
+      />
     </div>
   );
 }
